@@ -1,0 +1,160 @@
+#Adjusted featurecounts
+getwd()
+setwd("/media/atan/Seagate Backup Plus Drive/FinalAnalysis")
+
+setwd("/media/atan/Seagate Backup Plus Drive/JX RNA/output3/Week48")
+
+#Libraries
+library("Rsubread")
+
+#Featurecounts code
+bam1 <- list.files(path = ".", pattern = "1wk", full.names = TRUE)
+bam4 <- list.files(path = ".", pattern = "4wk", full.names = TRUE)
+bam8 <- list.files(path = ".", pattern = "8wk", full.names = TRUE)
+bam12 <- list.files(path = ".", pattern = "12wk", full.names = TRUE)
+bam16 <- list.files(path = ".", pattern = "16wk", full.names = TRUE)
+bam32 <- list.files(path = ".", pattern = "32wk", full.names = TRUE)
+bam32_2 <- list.files(path = ".", pattern = "w32", full.names = TRUE)
+
+bam32 <- list.files(path = ".", pattern = "sorted", full.names = TRUE)
+bam48 <- list.files(path = ".", pattern = "sorted", full.names = TRUE)
+
+
+fc1 <- featureCounts(bam1, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc1$counts, row.names = TRUE, "week1.csv")
+
+fc4 <- featureCounts(bam4, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc4$counts, row.names = TRUE, "week4.csv")
+
+fc8 <- featureCounts(bam8, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc8$counts, row.names = TRUE, "week8.csv")
+
+fc12 <- featureCounts(bam12, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc12$counts, row.names = TRUE, "week12.csv")
+
+fc16 <- featureCounts(bam16, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc16$counts, row.names = TRUE, "week16.csv")
+
+fc32 <- featureCounts(bam32, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc32$counts, row.names = TRUE, "week32_5.csv")
+
+#Week 32 Legends: Week 32 (Original), Week 32_2(New data only), Week 32_3 (Merged Old and New), Week 32_4 (sorting based on Nodules)
+fc32_2 <- featureCounts(bam32_2, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc32_2$counts, row.names = TRUE, "week32_3.csv")
+
+fc48 <- featureCounts(bam48, annot.ext = "Mus_musculus.GRCm38.94.gtf", isGTFAnnotationFile = TRUE)
+write.csv(fc48$counts, row.names = TRUE, "week48.csv")
+
+#DESeq2
+
+library("DESeq2")
+library("dplyr")
+library("tidyr")
+library("tidyselect")
+library("biobroom")
+library("annotables")
+
+
+#week1
+
+week1 <- read.csv("week1.csv")
+rownames(week1) <- week1[,1]
+week1[,1] <- NULL
+week1cond <- factor(c("control", "control", "control", "control","control", "control", "control", "control", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad"))
+dds1 <- DESeqDataSetFromMatrix(countData = as.matrix(week1), colData = as.data.frame(week1cond), ~ week1cond)
+colData(dds1)$week1cond <- factor(colData(dds1)$week1cond, levels = c('control', 'lidpad'))
+dds1 <- DESeq(dds1)
+
+#Change made here for numerator/denominator (16/1/19)
+res.w1<-results(dds1,contrast=c('week1cond','lidpad','control'),alpha=0.05)
+t.res.w1 <- tidy.DESeqResults(res.w1)
+t.res.w1 <- arrange(t.res.w1, p.adjusted)
+inner_join (t.res.w1, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w1, grcm38, by = c("gene" = "ensgene")), "week1full.csv")
+
+#week4
+week4 <-read.csv("week4.csv")
+rownames(week4) <- week4[,1]
+week4[,1] <- NULL
+week4cond <- factor(c("control", "control", "control", "control", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad"))
+dds4 <- DESeqDataSetFromMatrix(countData = as.matrix(week4), colData = as.data.frame(week4cond), ~ week4cond)
+colData(dds4)$week1cond <- factor(colData(dds4)$week4cond, levels = c('control', 'lidpad'))
+dds4.1 <- DESeq(dds4)
+
+res.w4<-results(dds4.1,contrast=c('week4cond','lidpad','control'),alpha=0.05)
+t.res.w4 <- tidy.DESeqResults(res.w4)
+t.res.w4 <- arrange(t.res.w4, p.adjusted)
+inner_join (t.res.w4, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w4, grcm38, by = c("gene" = "ensgene")), "week4full.csv")
+
+#week8
+week8 <-read.csv("week8.csv")
+rownames(week8) <- week8[,1]
+week8[,1] <- NULL
+dds8 <- DESeqDataSetFromMatrix(countData = as.matrix(week8), colData = as.data.frame(week4cond), ~ week4cond)
+colData(dds8)$week4cond <- factor(colData(dds8)$week4cond, levels = c('control', 'lidpad'))
+dds8.1 <- DESeq(dds8)
+
+res.w8<-results(dds8.1,contrast=c('week4cond','lidpad','control'),alpha=0.05)
+t.res.w8 <- tidy.DESeqResults(res.w8)
+t.res.w8 <- arrange(t.res.w8, p.adjusted)
+inner_join (t.res.w8, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w8, grcm38, by = c("gene" = "ensgene")), "week8full.csv")
+
+#week12
+week12 <-read.csv("week12.csv")
+rownames(week12) <- week12[,1]
+week12[,1] <- NULL
+dds12 <- DESeqDataSetFromMatrix(countData = as.matrix(week12), colData = as.data.frame(week1cond), ~ week1cond)
+colData(dds12)$week1cond <- factor(colData(dds12)$week1cond, levels = c('control', 'lidpad'))
+dds12.1 <- DESeq(dds12)
+
+res.w12<-results(dds12.1,contrast=c('week1cond','lidpad','control'),alpha=0.05)
+t.res.w12 <- tidy.DESeqResults(res.w12)
+t.res.w12 <- arrange(t.res.w12, p.adjusted)
+inner_join (t.res.w12, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w12, grcm38, by = c("gene" = "ensgene")), "week12full.csv")
+
+#week16
+week16 <- read.csv("week16.csv")
+rownames(week16) <- week16[,1]
+week16[,1] <- NULL
+week16cond <- factor(c("control", "control", "control", "control","control", "control", "control", "control","control", "control", "control", "control", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad", "lidpad"))
+dds16 <- DESeqDataSetFromMatrix(countData = as.matrix(week16), colData = as.data.frame(week16cond), ~ week16cond)
+colData(dds16)$week16cond <- factor(colData(dds16)$week16cond, levels = c('control', 'lidpad'))
+dds16.1 <- DESeq(dds16)
+
+res.w16<-results(dds16.1,contrast=c('week16cond','lidpad','control'),alpha=0.05)
+t.res.w16 <- tidy.DESeqResults(res.w16)
+t.res.w16 <- arrange(t.res.w16, p.adjusted)
+inner_join (t.res.w16, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w16, grcm38, by = c("gene" = "ensgene")), "week16full.csv")
+
+#week32
+week32 <- read.csv("week32.csv")
+rownames(week32) <- week32[,1]
+week32[,1] <- NULL
+dds32 <- DESeqDataSetFromMatrix(countData = as.matrix(week32), colData = as.data.frame(week4cond), ~ week4cond)
+colData(dds32)$week4cond <- factor(colData(dds32)$week4cond, levels = c('control', 'lidpad'))
+dds32.1 <- DESeq(dds32)
+
+res.w32<-results(dds32.1,contrast=c('week4cond','lidpad','control'),alpha=0.05)
+t.res.w32 <- tidy.DESeqResults(res.w32)
+t.res.w32 <- arrange(t.res.w32, p.adjusted)
+inner_join (t.res.w32, grcm38, by = c("gene" = "ensgene"))
+#write.csv(inner_join (t.res.w32, grcm38, by = c("gene" = "ensgene")), "week32full.csv")
+
+#week48
+week48 <- read.csv("week48.csv")
+rownames(week48) <- week48[,1]
+week48[,1] <- NULL
+week48cond <- factor(c("control", "control", "control", "control","control", "control", "control", "control", "lidpad", "lidpad", "lidpad", "lidpad"))
+dds48 <- DESeqDataSetFromMatrix(countData = as.matrix(week48), colData = as.data.frame(week48cond), ~ week48cond)
+colData(dds48)$week48cond <- factor(colData(dds48)$week48cond, levels = c('control', 'lidpad'))
+dds48 <- DESeq(dds48)
+
+res.w48<-results(dds48,contrast=c('week48cond',"lidpad", 'control'),alpha=0.05)
+t.res.w48 <- tidy.DESeqResults(res.w48)
+t.res.w48 <- arrange(t.res.w48, p.adjusted)
+#write.csv(inner_join (t.res.w48, grcm38, by = c("gene" = "ensgene")), "week48full.csv")
+
