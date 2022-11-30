@@ -1,0 +1,425 @@
+library(DESeq2)
+library(dplyr)
+
+########count data##############
+Fcount <- read.csv("./gene_count.csv", 
+                     row.names=1, comment.char="#",check.names = F)
+
+#######coldata#######
+coldata <- read.csv("./coldata.csv", 
+                     row.names=1, comment.char="#",check.names = F)
+coldata$Group<-factor(coldata$Group,levels = c("Control_8","LIDPAD_8","mAb_8","LysM_8",
+                                               "Control_12","LIDPAD_12","mAb_12","LysM_12"))
+
+coldata<-coldata[order(coldata$Group),]
+Fcount<-Fcount[,rownames(coldata)]
+
+########### check ##############
+colnames(Fcount)==rownames(coldata)
+# all [TRUE]
+
+###############DESeq2################
+dds<-DESeqDataSetFromMatrix(countData=Fcount,colData = coldata, design=~Group)
+dds<-DESeq(dds)
+
+vsd<-varianceStabilizingTransformation(dds, blind=TRUE)
+
+###########PCA plot###########
+pcadat<-plotPCA(vsd,intgroup="Group",returnData=T)
+
+library(ggplot2)
+library(RColorBrewer)
+
+percentVar<-round(100*attr(pcadat,"percentVar"))
+w12_col<-colorRampPalette(brewer.pal(n=9,"Reds"))(5)[-1]
+w12_col<-w12_col[c(1,4,2,3)]
+
+w8_col<-colorRampPalette(brewer.pal(n=9,"Blues"))(5)[-1]
+w8_col<-w8_col[c(1,4,2,3)]
+
+pca_col<-c(w8_col,w12_col)
+pie(rep(1,8),col = pca_col)
+
+w8pca_plot<-ggplot(pcadat[c(1:20),], aes(PC1, PC2, fill=Group)) +
+  geom_point(size=5,pch=21,stroke=1.5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  scale_fill_manual(values = w8_col)+
+  scale_color_manual(values = w8_col)+
+  theme(aspect.ratio = 1)+
+  coord_fixed()+
+  stat_ellipse(size=1)
+
+w12pca_plot<-ggplot(pcadat[c(21:40),], aes(PC1, PC2, fill=Group)) +
+  geom_point(size=5,pch=21,stroke=1.5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  scale_fill_manual(values = w12_col)+
+  theme(aspect.ratio = 1)+
+  coord_fixed()+
+  stat_ellipse(size=1)
+
+pca_plot<-ggplot(pcadat, aes(PC1, PC2, fill=Group)) +
+  geom_point(size=5,pch=21,stroke=1.5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  scale_fill_manual(values = pca_col)+
+  theme(aspect.ratio = 1)+
+  coord_fixed()
+
+tiff('w8_PCA.tiff',width=2500,height=2000,units='px',res=300,compression='lzw')
+w8pca_plot
+dev.off()
+
+tiff('w12_PCA.tiff',width=2500,height=2000,units='px',res=300,compression='lzw')
+w12pca_plot
+dev.off()
+
+tiff('PCA.tiff',width=2500,height=2000,units='px',res=300,compression='lzw')
+pca_plot
+dev.off()
+
+###########DEG analysis###########
+library(biomaRt)
+
+Mmu.dataset<-useDataset('mmusculus_gene_ensembl',mart=useMart("ensembl"))
+Genemap<-getBM(attributes = c('ensembl_gene_id','external_gene_name'), 
+               filters='ensembl_gene_id',
+               values=rownames(Fcount),mart=Mmu.dataset)
+genesymbols <- tapply(Genemap$external_gene_name, 
+                      Genemap$ensembl_gene_id, paste, collapse="; ")
+
+########week 8##############
+res.w8LPvsCtrl<-as.data.frame(results(dds,contrast=c('Group','LIDPAD_8','Control_8'),alpha=0.05))
+res.w8LPvsCtrl<-res.w8LPvsCtrl[order(res.w8LPvsCtrl$padj),]
+res.w8LPvsCtrl$symbol<-genesymbols[rownames(res.w8LPvsCtrl)]
+sig.w8LPvsCtrl<-res.w8LPvsCtrl[which((res.w8LPvsCtrl$padj<0.05) & (abs(res.w8LPvsCtrl$log2FoldChange)>1)),]
+
+res.w8AbvsLP<-as.data.frame(results(dds,contrast=c('Group','mAb_8','LIDPAD_8'),alpha=0.05))
+res.w8AbvsLP<-res.w8AbvsLP[order(res.w8AbvsLP$padj),]
+res.w8AbvsLP$symbol<-genesymbols[rownames(res.w8AbvsLP)]
+sig.w8AbvsLP<-res.w8AbvsLP[which((res.w8AbvsLP$padj<0.05) & (abs(res.w8AbvsLP$log2FoldChange)>1)),]
+
+res.w8LysMvsLP<-as.data.frame(results(dds,contrast=c('Group','LysM_8','LIDPAD_8'),alpha=0.05))
+res.w8LysMvsLP<-res.w8LysMvsLP[order(res.w8LysMvsLP$padj),]
+res.w8LysMvsLP$symbol<-genesymbols[rownames(res.w8LysMvsLP)]
+sig.w8LysMvsLP<-res.w8LysMvsLP[which((res.w8LysMvsLP$padj<0.05) & (abs(res.w8LysMvsLP$log2FoldChange)>1)),]
+
+write.csv(sig.w8LPvsCtrl,file="sig.w8LPvsCtrl.csv")
+write.csv(sig.w8AbvsLP,file="sig.w8AbvsLP.csv")
+write.csv(sig.w8LysMvsLP,file="sig.w8LysMvsLP.csv")
+
+
+########week 12##############
+res.w12LPvsCtrl<-as.data.frame(results(dds,contrast=c('Group','LIDPAD_12','Control_12'),alpha=0.05))
+res.w12LPvsCtrl<-res.w12LPvsCtrl[order(res.w12LPvsCtrl$padj),]
+res.w12LPvsCtrl$symbol<-genesymbols[rownames(res.w12LPvsCtrl)]
+sig.w12LPvsCtrl<-res.w12LPvsCtrl[which((res.w12LPvsCtrl$padj<0.05) & (abs(res.w12LPvsCtrl$log2FoldChange)>1)),]
+
+res.w12AbvsLP<-as.data.frame(results(dds,contrast=c('Group','mAb_12','LIDPAD_12'),alpha=0.05))
+res.w12AbvsLP<-res.w12AbvsLP[order(res.w12AbvsLP$padj),]
+res.w12AbvsLP$symbol<-genesymbols[rownames(res.w12AbvsLP)]
+sig.w12AbvsLP<-res.w12AbvsLP[which((res.w12AbvsLP$padj<0.05) & (abs(res.w12AbvsLP$log2FoldChange)>1)),]
+
+res.w12LysMvsLP<-as.data.frame(results(dds,contrast=c('Group','LysM_12','LIDPAD_12'),alpha=0.05))
+res.w12LysMvsLP<-res.w12LysMvsLP[order(res.w12LysMvsLP$padj),]
+res.w12LysMvsLP$symbol<-genesymbols[rownames(res.w12LysMvsLP)]
+sig.w12LysMvsLP<-res.w12LysMvsLP[which((res.w12LysMvsLP$padj<0.05) & (abs(res.w12LysMvsLP$log2FoldChange)>1)),]
+
+write.csv(sig.w12LPvsCtrl,file="sig.w12LPvsCtrl.csv")
+write.csv(sig.w12AbvsLP,file="sig.w12AbvsLP.csv")
+write.csv(sig.w12LysMvsLP,file="sig.w12LysMvsLP.csv")
+
+########week 12 vs week 8##############
+res.w12Ctrlvsw8Ctrl<-as.data.frame(results(dds,contrast=c('Group','Control_12','Control_8'),alpha=0.05))
+res.w12Ctrlvsw8Ctrl<-res.w12Ctrlvsw8Ctrl[order(res.w12Ctrlvsw8Ctrl$padj),]
+res.w12Ctrlvsw8Ctrl$symbol<-genesymbols[rownames(res.w12Ctrlvsw8Ctrl)]
+sig.w12Ctrlvsw8Ctrl<-res.w12Ctrlvsw8Ctrl[which((res.w12Ctrlvsw8Ctrl$padj<0.05) & (abs(res.w12Ctrlvsw8Ctrl$log2FoldChange)>1)),]
+
+res.w12LIDPADvsw8LIDPAD<-as.data.frame(results(dds,contrast=c('Group','LIDPAD_12','LIDPAD_8'),alpha=0.05))
+res.w12LIDPADvsw8LIDPAD<-res.w12LIDPADvsw8LIDPAD[order(res.w12LIDPADvsw8LIDPAD$padj),]
+res.w12LIDPADvsw8LIDPAD$symbol<-genesymbols[rownames(res.w12LIDPADvsw8LIDPAD)]
+sig.w12LIDPADvsw8LIDPAD<-res.w12LIDPADvsw8LIDPAD[which((res.w12LIDPADvsw8LIDPAD$padj<0.05) & (abs(res.w12LIDPADvsw8LIDPAD$log2FoldChange)>1)),]
+
+res.w12mAbvsw8mAb<-as.data.frame(results(dds,contrast=c('Group','mAb_12','mAb_8'),alpha=0.05))
+res.w12mAbvsw8mAb<-res.w12mAbvsw8mAb[order(res.w12mAbvsw8mAb$padj),]
+res.w12mAbvsw8mAb$symbol<-genesymbols[rownames(res.w12mAbvsw8mAb)]
+sig.w12mAbvsw8mAb<-res.w12mAbvsw8mAb[which((res.w12mAbvsw8mAb$padj<0.05) & (abs(res.w12mAbvsw8mAb$log2FoldChange)>1)),]
+
+res.w12LysMvsw8LysM<-as.data.frame(results(dds,contrast=c('Group','LysM_12','LysM_8'),alpha=0.05))
+res.w12LysMvsw8LysM<-res.w12LysMvsw8LysM[order(res.w12LysMvsw8LysM$padj),]
+res.w12LysMvsw8LysM$symbol<-genesymbols[rownames(res.w12LysMvsw8LysM)]
+sig.w12LysMvsw8LysM<-res.w12LysMvsw8LysM[which((res.w12LysMvsw8LysM$padj<0.05) & (abs(res.w12LysMvsw8LysM$log2FoldChange)>1)),]
+
+write.csv(sig.w12Ctrlvsw8Ctrl,file="sig.w12Ctrlvsw8Ctrl.csv")
+write.csv(sig.w12LIDPADvsw8LIDPAD,file="sig.w12LIDPADvsw8LIDPAD.csv")
+write.csv(sig.w12mAbvsw8mAb,file="sig.w12mAbvsw8mAb.csv")
+write.csv(sig.w12LysMvsw8LysM,file="sig.w12LysMvsw8LysM.csv")
+
+#########all DEGs###########
+w8_DEG<-c(rownames(sig.w8LPvsCtrl),rownames(sig.w8AbvsLP),rownames(sig.w8LysMvsLP))
+w8_DEG<-w8_DEG[!duplicated(w8_DEG)]
+
+w12_DEG<-c(rownames(sig.w12LPvsCtrl),rownames(sig.w12AbvsLP),rownames(sig.w12LysMvsLP))
+w12_DEG<-w12_DEG[!duplicated(w12_DEG)]
+
+w12vw8_DEG<-c(rownames(sig.w12Ctrlvsw8Ctrl),rownames(sig.w12LIDPADvsw8LIDPAD),
+              rownames(sig.w12mAbvsw8mAb),rownames(sig.w12LysMvsw8LysM))
+w12vw8_DEG<-w12vw8_DEG[!duplicated(w12vw8_DEG)]
+
+all_DEG<-c(w8_DEG,w12_DEG,w12vw8_DEG)
+all_DEG<-all_DEG[!duplicated(all_DEG)]
+
+#########heatmap###########
+library(pheatmap)
+library(RColorBrewer)
+
+vsd_df<-as.data.frame(assay(vsd))
+vsd_hm<-vsd_df[all_DEG,]
+
+
+#heatmap construction
+break_hm = seq(-3.5, 3.5,length.out=100)
+hm_color<- colorRampPalette(rev(brewer.pal(11, "RdBu")))(length(break_hm))
+
+coldat_hm<-as.data.frame(dds@colData[,3,drop=FALSE])
+coldat_hm<-coldat_hm[c(1:5,21:25,
+                       6:10,26:30,
+                       11:15,31:35,
+                       16:20,36:40),,drop=F]
+
+vsd_hm<-vsd_hm[,rownames(coldat_hm)]
+
+my_color_annotation<-list(Group = c('Control_8'='#C6DBEF', 'LIDPAD_8'="#08306B",
+                                    'mAb_8'="#6BAED6", 'LysM_8'="#2171B5",
+                                    'Control_12'="#FCBBA1", 'LIDPAD_12'="#67000D",
+                                    'mAb_12'="#FB6A4A", 'LysM_12'="#CB181D"))
+
+hm_allDEG<-pheatmap(vsd_hm,scale="row",border_color = NA,color = hm_color,
+                    show_rownames = F,show_colnames = F,
+                    cluster_rows = T,cluster_cols = F,
+                    annotation_col = coldat_hm,
+                    breaks = break_hm,
+                    annotation_colors = my_color_annotation,
+                    clustering_distance_rows = "correlation",
+                    clustering_distance_cols = "correlation",
+                    angle_col = 45,
+                    gaps_col = c(10,20,30,40))
+
+tiff('hm_allDEG.tiff',width=2500,height=2000,units='px',res=300,compression='lzw')
+hm_allDEG
+dev.off()
+
+
+#get heatmap clusters (about 5 clusters)
+row.cor<-cor(t(vsd_hm),method = "pearson")
+hc<-hclust(as.dist(1-row.cor),method = "complete")
+hc$order==hm_allDEG$tree_row$order #all TRUE
+hm_cluster <- as.data.frame(cutree(tree = hc, k = 5))
+table(hm_cluster)
+#hm_cluster
+#1    2    3    4    5 
+#311 2749 777 560  303 
+
+plot(x = hc, labels =  row.names(hc), cex = 0.5)
+rect.hclust(tree = hc, k =5, which = 1:5, border = 1:5, cluster = hm_cluster$`cutree(tree = hc, k = 5)`)
+
+
+#heatmap reconstruction
+rowdat_hm<-hm_cluster
+rm(hm_cluster)
+colnames(rowdat_hm)<-c('Gene_cluster')
+rowdat_hm$Gene_cluster<-factor(rowdat_hm$Gene_cluster)
+
+brewer.pal(5,"Set2")
+pie(rep(1,5),col =brewer.pal(5,"Set2") )
+
+my_color_annotation<-list(Group = c('Control_8'='#C6DBEF', 'LIDPAD_8'="#08306B",
+                                    'mAb_8'="#6BAED6", 'LysM_8'="#2171B5",
+                                    'Control_12'="#FCBBA1", 'LIDPAD_12'="#67000D",
+                                    'mAb_12'="#FB6A4A", 'LysM_12'="#CB181D"),
+                          Gene_cluster=c('1'="#66C2A5",'2'="#FC8D62",'3'="#8DA0CB",
+                                                   '4'="#E78AC3",'5'="#A6D854"))
+
+
+hm_allDEG<-pheatmap(vsd_hm,scale="row",border_color = NA,color = hm_color,
+         show_rownames = F,show_colnames = F,
+         cluster_rows = T,cluster_cols = F,
+         annotation_col = coldat_hm,
+         annotation_row = rowdat_hm,
+         breaks = break_hm,
+         annotation_colors = my_color_annotation,
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         angle_col = 45,
+         gaps_col = c(10,20,30,40))
+
+tiff('hm_allDEG.tiff',width=2500,height=2000,units='px',res=300,compression='lzw')
+hm_allDEG
+dev.off()
+
+##############Enrichment analysis############
+#obtain genes from each cluster for functional enrichment
+Clus1_green<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="1")
+Clus2_orange<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="2")
+Clus3_blue<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="3")
+Clus4_purple<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="4")
+Clus5_lightgreen<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="5")
+
+library(ViSEAGO)
+expressed_genes<-Fcount
+expressed_genes[expressed_genes=="0"]<-NA
+expressed_genes<-expressed_genes[complete.cases(expressed_genes),]
+expressed_genes<-rownames(expressed_genes)
+write.table(expressed_genes,'expressed_genes.txt')
+
+background<-scan("expressed_genes.txt",
+                 quiet=TRUE,
+                 what="")
+
+Ensembl<-ViSEAGO::Ensembl2GO()
+ViSEAGO::available_organisms(Ensembl)
+
+myGENE2GO<-ViSEAGO::annotate(
+  "mmusculus_gene_ensembl",
+  Ensembl)
+
+#Clus1_green
+sig_Clus1_green<-rownames(Clus1_green)
+write.table(sig_Clus1_green,'sig_Clus1_green.txt')
+
+sig_Clus1_green<-scan(
+  "sig_Clus1_green.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus1_green<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus1_green,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus1_green<-topGO::runTest(
+  BP_Clus1_green,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus1_green_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus1_green","classic_Clus1_green")))
+
+BP_Clus1_green_res<-as.data.frame(BP_Clus1_green_sResults@data)
+write.table(BP_Clus1_green_res,"BP_Clus1_green_res.txt")
+
+#Clus2_orange
+sig_Clus2_orange<-rownames(Clus2_orange)
+write.table(sig_Clus2_orange,'sig_Clus2_orange.txt')
+
+sig_Clus2_orange<-scan(
+  "sig_Clus2_orange.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus2_orange<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus2_orange,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus2_orange<-topGO::runTest(
+  BP_Clus2_orange,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus2_orange_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus2_orange","classic_Clus2_orange")))
+
+BP_Clus2_orange_res<-as.data.frame(BP_Clus2_orange_sResults@data)
+write.table(BP_Clus2_orange_res,"BP_Clus2_orange_res.txt")
+
+#Clus3_blue
+sig_Clus3_blue<-rownames(Clus3_blue)
+write.table(sig_Clus3_blue,'sig_Clus3_blue.txt')
+
+sig_Clus3_blue<-scan(
+  "sig_Clus3_blue.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus3_blue<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus3_blue,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus3_blue<-topGO::runTest(
+  BP_Clus3_blue,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus3_blue_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus3_blue","classic_Clus3_blue")))
+
+BP_Clus3_blue_res<-as.data.frame(BP_Clus3_blue_sResults@data)
+write.table(BP_Clus3_blue_res,"BP_Clus3_blue_res.txt")
+
+#Clus4_purple
+sig_Clus4_purple<-rownames(Clus4_purple)
+write.table(sig_Clus4_purple,'sig_Clus4_purple.txt')
+
+sig_Clus4_purple<-scan(
+  "sig_Clus4_purple.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus4_purple<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus4_purple,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus4_purple<-topGO::runTest(
+  BP_Clus4_purple,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus4_purple_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus4_purple","classic_Clus4_purple")))
+
+BP_Clus4_purple_res<-as.data.frame(BP_Clus4_purple_sResults@data)
+write.table(BP_Clus4_purple_res,"BP_Clus4_purple_res.txt")
+
+#Clus5_lightgreen
+sig_Clus5_lightgreen<-rownames(Clus5_lightgreen)
+write.table(sig_Clus5_lightgreen,'sig_Clus5_lightgreen.txt')
+
+sig_Clus5_lightgreen<-scan(
+  "sig_Clus5_lightgreen.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus5_lightgreen<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus5_lightgreen,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus5_lightgreen<-topGO::runTest(
+  BP_Clus5_lightgreen,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus5_lightgreen_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus5_lightgreen","classic_Clus5_lightgreen")))
+
+BP_Clus5_lightgreen_res<-as.data.frame(BP_Clus5_lightgreen_sResults@data)
+write.table(BP_Clus5_lightgreen_res,"BP_Clus5_lightgreen_res.txt")
