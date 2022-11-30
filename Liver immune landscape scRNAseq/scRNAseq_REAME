@@ -1,0 +1,8 @@
+LIDPAD Manuscript scRNAseq scripts: 		
+		
+Filename	    Contents	                                    Figure
+scRNAseq_1.R	scRNAseq integration and global proportions         4	
+scRNAseq_2.R	T cell proportions	                            4c
+scRNAseq_3.R	Activation status	                            5a,S9a
+scRNAseq_4.R	T cell pseudotime	                            5b,S9b
+scRNAseq_5.R	DEG lists	
