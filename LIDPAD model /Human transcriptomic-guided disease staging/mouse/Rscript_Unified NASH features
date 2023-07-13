@@ -1,0 +1,217 @@
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(biomaRt)
+library(pheatmap)
+library(matrixStats)
+
+## get a unified feature list
+### shortlist the features at week 16, 32 and 48 (more obvious changes)
+
+boruta.w16<-res.w16_LPvCtrl[rownames(vsd_hm),]
+boruta.w32<-res.w32_LPvCtrl[rownames(vsd_hm),]
+boruta.w48<-res.w48_LPvCtrl[rownames(vsd_hm),]
+boruta.lateNASH<-as.data.frame(cbind(boruta.w16$log2FoldChange,
+                                     boruta.w32$log2FoldChange,
+                                     boruta.w48$log2FoldChange,
+                                     boruta.w16$symbol))
+boruta.lateNASH$ensembl<-rownames(boruta.w16)
+colnames(boruta.lateNASH)<-c('w16L2FC','w32L2FC','w48L2FC',"symbols","ensembl")
+boruta.lateNASH$marker<-rowdat_hm[boruta.lateNASH$ensembl,,drop=F]$marker
+
+write.csv(boruta.lateNASH,file = "./borutaFeature/boruta.lateNASH.csv")
+
+
+boruta.lateNASH <- read.csv("./boruta.lateNASH.csv") #load filtered boruta features
+
+unified_rowdat_hm<-subset(boruta.lateNASH,boruta.lateNASH$selected.=="Selected")
+rownames(unified_rowdat_hm)<-unified_rowdat_hm$ensembl
+unified_rowdat_hm<-unified_rowdat_hm[,7,drop=F]
+unified_rowdat_hm$marker<-factor(unified_rowdat_hm$marker,levels=c('non-diseased','NASH', 'NASH_cirrhotic', 'cirrhotic'))
+
+unified_vsd_hm<-vsd_hm[rownames(unified_rowdat_hm),]
+
+hm_boruta.unified<-pheatmap(unified_vsd_hm,scale="row",border_color = NA,color = hm_color,
+                    show_rownames = F,show_colnames = T,
+                    cluster_rows = F,cluster_cols = F,
+                    annotation_col = coldat_hm,
+                    annotation_row = rowdat_hm,
+                    breaks = break_hm,
+                    annotation_colors = my_color_annotation,
+                    clustering_distance_rows = "correlation",
+                    clustering_distance_cols = "correlation",
+                    angle_col = 45,gaps_col = 48)
+
+tiff('hm_boruta.unified.tiff',width=4000,height=3000,units='px',res=300,compression='lzw')
+hm_boruta.unified
+dev.off()
+
+feature108_unified<-subset(feature149,feature149$mouse_ensembl %in% rownames(unified_rowdat_hm))
+write.csv(feature108_unified,file="./borutaFeature/feature108_unified.csv")
+
+#convert mouse ensembl to human gene symbols
+#convert human to mouse ensembl ID
+mouse2human<-getLDS(attributes=c("ensembl_gene_id"),
+                        filters="ensembl_gene_id", values=rownames(vsd_df), mart=Mmu.dataset,
+                        attributesL=c("ensembl_gene_id","external_gene_name"), martL=Hsa.dataset)
+colnames(mouse2human)<-c('mouse.ensembl','human.ensembl','human.genesymbol')
+
+#manually curate some inconsistencies
+## retain ENSMUSG00000061758 (AKR1B10) and remove other IDs of the same genes 
+test<-subset(mouse2human,mouse2human$mouse.ensembl %in% feature108_unified$mouse_ensembl)
+
+discard<-c('ENSMUSG00000052131','ENSMUSG00000029762')
+mouse2human<-subset(mouse2human,!mouse2human$mouse.ensembl%in%discard)
+
+#remove unannotated ENSMUSG00000003585/ENSG00000249590, ENSMUSG00000007891/ENSG00000250644,
+# ENSMUSG00000003269/ENSG00000268465,ENSMUSG00000024042/ENSG00000275993, ENSMUSG00000026739/ENSG00000168283
+mouse2human<-subset(mouse2human,!mouse2human$human.ensembl %in% c("ENSG00000249590",'ENSG00000250644', "ENSG00000268465",'ENSG00000275993','ENSG00000168283'))
+
+
+#add ENSMUSG00000023905
+include<-subset(feature108_unified,feature108_unified$mouse_ensembl %in% "ENSMUSG00000023905")
+include<-include[,c(4,2,1)]
+colnames(include)<-colnames(mouse2human)
+
+mouse2human<-rbind(mouse2human,include)
+
+mouse2human<-subset(mouse2human,!duplicated(mouse2human$mouse.ensembl))
+
+rownames(mouse2human)<-mouse2human$mouse.ensembl
+mouse2human$mouse.ensembl<-NULL
+
+
+
+#replace symbols of ENSMUSG00000015947 from "FCGR1B" to "FCGR1A"
+
+include2<-subset(feature89,feature89$mouse_ensembl %in% "ENSMUSG00000015947")
+rownames(include2)<-include2$mouse_ensembl
+include2<-include2[,c(1,2)]
+colnames(include2)<-colnames(mouse2human)
+
+
+mouse2human["ENSMUSG00000015947",]$human.ensembl<-include2$human.ensembl
+mouse2human["ENSMUSG00000015947",]$human.genesymbol<-include2$human.genesymbol
+
+
+vsd_df<-as.data.frame(assay(vsd))
+vsd_df$symbol<-mouse2human[rownames(vsd_df),]$human.genesymbol
+vsd_df<-vsd_df[!duplicated(vsd_df$symbol),]
+vsd_df<-vsd_df[complete.cases(vsd_df),]
+rownames(vsd_df)<-vsd_df$symbol
+vsd_df$symbol<-NULL
+
+test2<-subset(vsd_df,rownames(vsd_df)%in%feature89$symbols)
+
+write.csv(vsd_df,file="./borutaFeature/vsd_LIDPAD.csv")
+write.csv(mouse2human,file="./borutaFeature/mouse2human.csv")
+
+##############################################################################
+#feature 89
+feature89 <- read.csv("C:/Users/LKC/OneDrive - Nanyang Technological University/Project/SingleCell_NASH/Meta-analysis/LIDPAD liver transcriptome/borutaFeature/selected.feature89.csv")
+
+Mouseborutagene<-getLDS(attributes=c("ensembl_gene_id"),
+                        filters="ensembl_gene_id", values=feature89$ensembl, mart=Hsa.dataset,
+                        attributesL=c("ensembl_gene_id"), martL=Mmu.dataset)
+colnames(Mouseborutagene)<-c('ensembl','mouse_ensembl')
+
+feature89<-full_join(feature89,Mouseborutagene,by="ensembl")
+feature89<-feature89[complete.cases(feature89),] #remove those wihout orthologs
+discard<-c('ENSMUSG00000052131','ENSMUSG00000029762') #remove multiple mapping for AKR1B10 
+feature89<-subset(feature89,!feature89$mouse_ensembl%in%discard) #down to 85
+
+#########heatmap###########
+vsd_df<-as.data.frame(assay(vsd))
+vsd_hm<-subset(vsd_df,rownames(vsd_df) %in% feature89$mouse_ensembl)
+vsd_hm$var<-rowVars(as.matrix(vsd_hm))
+vsd_hm<-subset(vsd_hm,!vsd_hm$var==min(vsd_hm$var))
+vsd_hm$var<-NULL
+
+#heatmap construction
+break_hm = seq(-4.5, 4.5,length.out=100)
+hm_color<- colorRampPalette(rev(brewer.pal(11, "RdBu")))(100)
+
+coldat_hm<-as.data.frame(dds@colData[,3,drop=FALSE])
+coldat_hm<-coldat_hm[order(coldat_hm$group),,drop=F]
+vsd_hm<-vsd_hm[,rownames(coldat_hm)]
+
+rowdat_hm<-feature89[,3:4]
+rowdat_hm<-subset(rowdat_hm,rowdat_hm$mouse_ensembl%in%rownames(vsd_hm))
+rownames(rowdat_hm)<-rowdat_hm$mouse_ensembl
+rowdat_hm$mouse_ensembl<-NULL
+rowdat_hm$marker<-factor(rowdat_hm$marker,levels=c('healthy_liver genes','NAFLD genes'))
+rowdat_hm<-rowdat_hm[order(rowdat_hm$marker),,drop=F]
+
+
+vsd_hm<-vsd_hm[rownames(rowdat_hm),rownames(coldat_hm)]
+
+
+#brewer.pal(8,"Greens")[-1]
+##"#E5F5E0" "#C7E9C0" "#A1D99B" "#74C476" "#41AB5D" "#238B45" "#005A32"
+
+#brewer.pal(8,"Purples")[-1]
+## "#EFEDF5" "#DADAEB" "#BCBDDC" "#9E9AC8" "#807DBA" "#6A51A3" "#4A1486"
+
+my_color_annotation<-list(marker= c("healthy_liver genes"="grey80","NAFLD genes"="red"),
+                          group=c('control_1'='#E5F5E0', 'control_4'='#C7E9C0','control_8'='#A1D99B',
+                                  'control_12'='#74C476','control_16'='#41AB5D','control_32'='#238B45',
+                                  'control_48'='#005A32',
+                                  'lidpad_1'="#EFEDF5", 'lidpad_4'="#DADAEB", 'lidpad_8'="#BCBDDC", 'lidpad_12'="#9E9AC8",
+                                  'lidpad_16'="#807DBA", 'lidpad_32'="#6A51A3", 'lidpad_48'="#4A1486"))
+
+hm_boruta<-pheatmap(vsd_hm,scale="row",border_color = NA,color = hm_color,
+                    show_rownames = T,show_colnames = T,
+                    cluster_rows = T,cluster_cols = F,
+                    annotation_col = coldat_hm,
+                    annotation_row = rowdat_hm,
+                    breaks = break_hm,
+                    annotation_colors = my_color_annotation,
+                    clustering_distance_rows = "correlation",
+                    clustering_distance_cols = "correlation",
+                    angle_col = 45,gaps_col = 48)
+
+
+## get a unified feature list
+### shortlist the features at week 16, 32 and 48 (more obvious changes)
+
+boruta.w16<-res.w16_LPvCtrl[rownames(vsd_hm),]
+boruta.w32<-res.w32_LPvCtrl[rownames(vsd_hm),]
+boruta.w48<-res.w48_LPvCtrl[rownames(vsd_hm),]
+boruta.lateNASH<-as.data.frame(cbind(boruta.w16$log2FoldChange,
+                                     boruta.w32$log2FoldChange,
+                                     boruta.w48$log2FoldChange,
+                                     boruta.w16$symbol))
+boruta.lateNASH$ensembl<-rownames(boruta.w16)
+colnames(boruta.lateNASH)<-c('w16L2FC','w32L2FC','w48L2FC',"symbols","ensembl")
+boruta.lateNASH$marker<-rowdat_hm[boruta.lateNASH$ensembl,,drop=F]$marker
+
+write.csv(boruta.lateNASH,file = "./borutaFeature/boruta.lateNASH.csv")
+
+
+boruta.lateNASH <- read.csv("./borutaFeature/boruta.lateNASH2.csv") #load filtered boruta features
+
+unified_rowdat_hm<-subset(boruta.lateNASH,boruta.lateNASH$selected.=="Selected")
+rownames(unified_rowdat_hm)<-unified_rowdat_hm$ensembl
+unified_rowdat_hm<-unified_rowdat_hm[,7,drop=F]
+unified_rowdat_hm$marker<-factor(unified_rowdat_hm$marker,levels=c('non-diseased','NASH', 'NASH_cirrhotic', 'cirrhotic'))
+
+unified_vsd_hm<-vsd_hm[rownames(unified_rowdat_hm),]
+
+hm_boruta.unified<-pheatmap(unified_vsd_hm,scale="row",border_color = NA,color = hm_color,
+                            show_rownames = T,show_colnames = T,
+                            cluster_rows =T,cluster_cols = F,
+                            annotation_col = coldat_hm,
+                            annotation_row = rowdat_hm,
+                            breaks = break_hm,
+                            annotation_colors = my_color_annotation,
+                            clustering_distance_rows = "correlation",
+                            clustering_distance_cols = "correlation",
+                            angle_col = 45,gaps_col = 48)
+
+tiff('hm_boruta.unified.tiff',width=4000,height=3000,units='px',res=300,compression='lzw')
+hm_boruta.unified
+dev.off()
+
+feature61_unified<-subset(feature89,feature89$mouse_ensembl %in% rownames(unified_rowdat_hm))
+write.csv(feature61_unified,file="./borutaFeature/feature61_unified.csv")
