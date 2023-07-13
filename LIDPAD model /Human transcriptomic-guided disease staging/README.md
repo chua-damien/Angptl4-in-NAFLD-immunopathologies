@@ -18,7 +18,7 @@ Scripts and data files are available in "mouse" folder.
 
 Manual curation was carried out to include only genes positively correlated with disease progression and with a mouse ortholog based on biomaRT. This analysis resulted in a human-mouse unified NAFLD transcriptomic signature comprised of 54 genes. 
 
-## Step 3: Inter-study/diet-induced model comparison using ssGSEA and the unidied NAFLD gene signature
+## Step 3: Inter-study/diet-induced model comparison using ssGSEA and the unified NAFLD gene signature
 
 Scripts and data files are available in "ssgsea using unified features" folder. 
 
