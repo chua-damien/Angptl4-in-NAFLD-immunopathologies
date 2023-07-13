@@ -17,7 +17,8 @@ Bulk hepatic transcriptomes of LIDPAD-fed mice with LysMCre-Angptl4-knockout or 
 ## R scripts
 "LIDPAD model" folder contains the Rscripts for the following analyses:
   1. Bulk liver transcriptomes of LIDPAD- (and control diet-) fed mice at Week 1, 4, 8, 12, 16, 32 and 48 post feeding.
-  2. The establishment of a human transcriptomic-guided disease staging approach. 
+  2. The establishment of a human transcriptomic-guided disease staging approach.
+  3. Liver transcriptomes of MASH mice given diet reversion.
 
 "Liver immune landscape" folder contains the scripts for the following analyses:
   1. "scRNAseq" folder contains the scripts to annotate the intrahepatic immune clusters, identify the differentially expressed genes, functional enrichment and psedotime trajectory.
