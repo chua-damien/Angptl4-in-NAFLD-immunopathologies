@@ -6,6 +6,126 @@ library(biomaRt)
 library(pheatmap)
 library(matrixStats)
 
+########count data & coldata##############
+week1 <- read.csv("./week1.csv",
+                  row.names=1,check.names = F)
+week4 <- read.csv("./week4.csv", 
+                  row.names=1,check.names = F)
+week8 <- read.csv("./week8.csv", 
+                  row.names=1,check.names = F)
+week12 <- read.csv("./week12.csv", 
+                  row.names=1,check.names = F)
+week16 <- read.csv("./week16.csv", 
+                  row.names=1,check.names = F)
+week32 <- read.csv("./week32.csv", 
+                  row.names=1,check.names = F)
+week48 <- read.csv("./week48.csv", 
+                  row.names=1,check.names = F)
+
+Fcount <- as.data.frame(cbind(week1,week4,week8,week12,week16,week32,week48))
+
+coldata <- read.delim("./coldata.txt", row.names=1)
+coldata$group<-factor(coldata$group,levels=c("control_1","control_4","control_8",
+                                             "control_12","control_16","control_32","control_48",
+                                             "lidpad_1","lidpad_4","lidpad_8",
+                                             "lidpad_12","lidpad_16","lidpad_32","lidpad_48"))
+colnames(Fcount)==rownames(coldata)
+
+
+###############DESeq2################
+dds<-DESeqDataSetFromMatrix(countData=Fcount,colData = coldata, design=~group)
+dds<-DESeq(dds)
+vsd<-varianceStabilizingTransformation(dds, blind=TRUE)
+
+###########DEG analysis###########
+Mmu.dataset<-useDataset('mmusculus_gene_ensembl',mart=useMart("ensembl"))
+Genemap<-getBM(attributes = c('ensembl_gene_id','external_gene_name'), 
+               filters='ensembl_gene_id',
+               values=rownames(Fcount),mart=Mmu.dataset)
+genesymbols <- tapply(Genemap$external_gene_name, 
+                      Genemap$ensembl_gene_id, paste, collapse="; ")
+
+######## week 1 lidpad vs control ##############
+res.w1_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_1','control_1'),alpha=0.05))
+res.w1_LPvCtrl<-res.w1_LPvCtrl[order(res.w1_LPvCtrl$padj),]
+res.w1_LPvCtrl$symbol<-genesymbols[rownames(res.w1_LPvCtrl)]
+sig.w1_LPvCtrl<-res.w1_LPvCtrl[which((res.w1_LPvCtrl$padj<0.05)& (abs(res.w1_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w1_LPvCtrl,file="sig.w1_LPvCtrl.csv")
+write.csv(res.w1_LPvCtrl,file="res.w1_LPvCtrl.csv")
+
+######## week 4 lidpad vs control ##############
+res.w4_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_4','control_4'),alpha=0.05))
+res.w4_LPvCtrl<-res.w4_LPvCtrl[order(res.w4_LPvCtrl$padj),]
+res.w4_LPvCtrl$symbol<-genesymbols[rownames(res.w4_LPvCtrl)]
+sig.w4_LPvCtrl<-res.w4_LPvCtrl[which((res.w4_LPvCtrl$padj<0.05)& (abs(res.w4_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w4_LPvCtrl,file="sig.w4_LPvCtrl.csv")
+write.csv(res.w4_LPvCtrl,file="res.w4_LPvCtrl.csv")
+
+######## week 8 lidpad vs control ##############
+res.w8_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_8','control_8'),alpha=0.05))
+res.w8_LPvCtrl<-res.w8_LPvCtrl[order(res.w8_LPvCtrl$padj),]
+res.w8_LPvCtrl$symbol<-genesymbols[rownames(res.w8_LPvCtrl)]
+sig.w8_LPvCtrl<-res.w8_LPvCtrl[which((res.w8_LPvCtrl$padj<0.05)& (abs(res.w8_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w8_LPvCtrl,file="sig.w8_LPvCtrl.csv")
+write.csv(res.w8_LPvCtrl,file="res.w8_LPvCtrl.csv")
+
+######## week 12 lidpad vs control ##############
+res.w12_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_12','control_12'),alpha=0.05))
+res.w12_LPvCtrl<-res.w12_LPvCtrl[order(res.w12_LPvCtrl$padj),]
+res.w12_LPvCtrl$symbol<-genesymbols[rownames(res.w12_LPvCtrl)]
+sig.w12_LPvCtrl<-res.w12_LPvCtrl[which((res.w12_LPvCtrl$padj<0.05)& (abs(res.w12_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w12_LPvCtrl,file="sig.w12_LPvCtrl.csv")
+write.csv(res.w12_LPvCtrl,file="res.w12_LPvCtrl.csv")
+
+######## week 16 lidpad vs control ##############
+res.w16_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_16','control_16'),alpha=0.05))
+res.w16_LPvCtrl<-res.w16_LPvCtrl[order(res.w16_LPvCtrl$padj),]
+res.w16_LPvCtrl$symbol<-genesymbols[rownames(res.w16_LPvCtrl)]
+sig.w16_LPvCtrl<-res.w16_LPvCtrl[which((res.w16_LPvCtrl$padj<0.05)& (abs(res.w16_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w16_LPvCtrl,file="sig.w16_LPvCtrl.csv")
+write.csv(res.w16_LPvCtrl,file="res.w16_LPvCtrl.csv")
+
+######## week 32 lidpad vs control ##############
+res.w32_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_32','control_32'),alpha=0.05))
+res.w32_LPvCtrl<-res.w32_LPvCtrl[order(res.w32_LPvCtrl$padj),]
+res.w32_LPvCtrl$symbol<-genesymbols[rownames(res.w32_LPvCtrl)]
+sig.w32_LPvCtrl<-res.w32_LPvCtrl[which((res.w32_LPvCtrl$padj<0.05)& (abs(res.w32_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w32_LPvCtrl,file="sig.w32_LPvCtrl.csv")
+write.csv(res.w32_LPvCtrl,file="res.w32_LPvCtrl.csv")
+
+######## week 48 lidpad vs control ##############
+res.w48_LPvCtrl<-as.data.frame(results(dds,contrast=c('group','lidpad_48','control_48'),alpha=0.05))
+res.w48_LPvCtrl<-res.w48_LPvCtrl[order(res.w48_LPvCtrl$padj),]
+res.w48_LPvCtrl$symbol<-genesymbols[rownames(res.w48_LPvCtrl)]
+sig.w48_LPvCtrl<-res.w48_LPvCtrl[which((res.w48_LPvCtrl$padj<0.05)& (abs(res.w48_LPvCtrl$log2FoldChange)>1)),]
+
+write.csv(sig.w48_LPvCtrl,file="sig.w48_LPvCtrl.csv")
+write.csv(res.w48_LPvCtrl,file="res.w48_LPvCtrl.csv")
+
+######### use boruta feature for classification #############
+#convert human to mouse ensembl ID
+selected.feature89 <- read.csv("./selected.feature89.csv")
+
+Hsa.dataset<-useMart(host="https://dec2021.archive.ensembl.org", "ENSEMBL_MART_ENSEMBL", 
+                     dataset="hsapiens_gene_ensembl") 
+
+Mmu.dataset<-useMart(host="https://dec2021.archive.ensembl.org", "ENSEMBL_MART_ENSEMBL", 
+                     dataset="mmusculus_gene_ensembl") 
+
+
+Mouseborutagene<-getLDS(attributes=c("ensembl_gene_id"),
+               filters="ensembl_gene_id", values=feature149$ensembl, mart=Hsa.dataset,
+               attributesL=c("ensembl_gene_id"), martL=Mmu.dataset)
+colnames(Mouseborutagene)<-c('ensembl','mouse_ensembl')
+
+
+
 ## get a unified feature list
 ### shortlist the features at week 16, 32 and 48 (more obvious changes)
 
