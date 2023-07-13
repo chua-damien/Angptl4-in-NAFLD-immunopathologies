@@ -1,0 +1,373 @@
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(biomaRt)
+library(pheatmap)
+library(limma)
+library(stringr)
+library(viridis)
+
+coldata_byscore <- read.csv("./coldata_allwpred.gender_byscore.csv",
+                        row.names=1,check.names = F)
+
+Fcount <- read.csv("./Fcount_all.csv",
+                            row.names=1,check.names = F)
+
+Fcount<-Fcount[,rownames(coldata_byscore)]
+
+coldata_byscore$condition<-factor(coldata_byscore$condition,
+                              levels=c("healthy","NAFL",'NASH','cirrhosis'))
+coldata_byscore$batch<-factor(coldata_byscore$batch)
+coldata_byscore$Gender<-factor(coldata_byscore$gender,levels=c("M","F"))
+
+#sanity check
+colnames(Fcount)==rownames(coldata_byscore)
+
+
+###############DESeq2 batch correction################
+dds_SAF<-DESeqDataSetFromMatrix(countData=Fcount,colData = coldata_byscore, design=~batch+Gender+nafldactivityscore+fibrosisstage)
+dds_SAF<-DESeq(dds_SAF)
+
+vsd<-varianceStabilizingTransformation(dds_SAF, blind=TRUE)
+vsdmat<-assay(vsd)
+mm<-model.matrix(~nafldactivityscore+fibrosisstage,colData(vsd))
+vsdmat<-removeBatchEffect(vsdmat,batch=vsd$batch,batch2 = vsd$Gender,design=mm)
+assay(vsd)<-vsdmat
+
+PCA<-plotPCA(vsd,intgroup="condition",returnData=T) #a few odd datapoints, need to remove
+plotPCA(vsd,intgroup="nafldactivityscore")
+plotPCA(vsd,intgroup="batch")
+plotPCA(vsd,intgroup="fibrosisstage")
+
+discard<-rownames(subset(PCA_nas,!PCA_nas$PC2 > -30))
+
+
+######### rerun after discard the outliers ##############
+coldata_byscore<-subset(coldata_byscore,!rownames(coldata_byscore) %in% discard)
+Fcount<-Fcount[,rownames(coldata_byscore)]
+
+
+dds_SAF<-DESeqDataSetFromMatrix(countData=Fcount,colData = coldata_byscore, design=~batch+Gender+nafldactivityscore+fibrosisstage)
+dds_SAF<-DESeq(dds_SAF)
+
+vsd<-varianceStabilizingTransformation(dds_SAF, blind=TRUE)
+vsdmat<-assay(vsd)
+mm<-model.matrix(~nafldactivityscore+fibrosisstage,colData(vsd))
+vsdmat<-removeBatchEffect(vsdmat,batch=vsd$batch,batch2 = vsd$Gender,design=mm)
+assay(vsd)<-vsdmat
+
+PCA_condition<-plotPCA(vsd,intgroup="condition") 
+PCA_NASscore<-plotPCA(vsd,intgroup="nafldactivityscore")
+PCA_batch<-plotPCA(vsd,intgroup="batch")
+PCA_fibrosis<-plotPCA(vsd,intgroup="fibrosisstage")
+
+tiff('./deseq2byscore/PCA_condition.tiff',width=2000,height=2500,units='px',res=300,compression='lzw')
+PCA_condition
+dev.off()
+
+tiff('./deseq2byscore/PCA_NASscore.tiff',width=2000,height=2500,units='px',res=300,compression='lzw')
+PCA_NASscore
+dev.off()
+
+tiff('./deseq2byscore/PCA_batch.tiff',width=2000,height=2500,units='px',res=300,compression='lzw')
+PCA_batch
+dev.off()
+
+tiff('./deseq2byscore/PCA_fibrosis.tiff',width=2000,height=2500,units='px',res=300,compression='lzw')
+PCA_fibrosis
+dev.off()
+
+###########DEG analysis###########
+Hsa.dataset<-useDataset('hsapiens_gene_ensembl',mart=useMart("ensembl"))
+Genemap<-getBM(attributes = c('ensembl_gene_id','external_gene_name',"gene_biotype"), 
+               filters='ensembl_gene_id',
+               values=rownames(dds_SAF),mart=Hsa.dataset)
+genesymbols <- tapply(Genemap$external_gene_name, 
+                      Genemap$ensembl_gene_id, paste, collapse="; ")
+
+
+resultsNames(dds_SAF)
+res.NAS<-as.data.frame(results(dds_SAF,name = "nafldactivityscore"))
+res.NAS<-res.NAS[order(res.NAS$padj),]
+res.NAS$symbol<-genesymbols[rownames(res.NAS)]
+sig.res.NAS<-res.NAS[which((res.NAS$padj<0.05)& (abs(res.NAS$log2FoldChange)>0.1)),]
+
+res.fibro<-as.data.frame(results(dds_SAF,name = "fibrosisstage"))
+res.fibro<-res.fibro[order(res.fibro$padj),]
+res.fibro$symbol<-genesymbols[rownames(res.fibro)]
+sig.res.fibro<-res.fibro[which((res.fibro$padj<0.05)& (abs(res.fibro$log2FoldChange)>0.2)),]
+
+DEG<-c(rownames(sig.res.NAS),rownames(sig.res.fibro))
+DEG<-DEG[!duplicated(DEG)]
+
+#########heatmap###########
+vsd_hm<-as.data.frame(assay(vsd))
+vsd_hm<-vsd_hm[DEG,]
+
+#heatmap construction
+break_hm = seq(-2.5, 2.5,length.out=100)
+
+colorRampPalette("red","lightblue")(100)
+#hm_color<- colorRampPalette(rev(brewer.pal(11, "RdBu")))(100)
+hm_color<-colorRampPalette(c("#2F78B5","#64A8CE", "#F5F6F6","#B2182B", "#67001F"))( 100 )
+
+coldat_hm<-as.data.frame(dds_SAF@colData[,c(1,2,9,11)])
+coldat_hm<-coldat_hm[order(coldat_hm$fibrosisstage,coldat_hm$nafldactivityscore),]
+#coldat_hm<-coldat_hm[order(coldat_hm$fibrosisstage,coldat_hm$nafldactivityscore),]
+vsd_hm<-vsd_hm[,rownames(coldat_hm)]
+
+
+hm_allDEG<-pheatmap(vsd_hm,scale="row",border_color = NA,color = hm_color,
+                    show_rownames = F,show_colnames = F,
+                    cluster_rows = T,cluster_cols =F,
+                    annotation_col = coldat_hm,
+                    #clustering_callback = \(...)hc,
+                    breaks = break_hm,
+                    #annotation_colors = my_color_annotation,
+                    clustering_distance_rows = "correlation",
+                    clustering_distance_cols = "correlation",
+                    angle_col = 45,cutree_rows = 3)
+
+#get heatmap clusters (2 clusters)
+hc<-hclust(as.dist(1-cor(t(vsd_hm),method = "pearson")),method = "complete")
+hc$order==hm_allDEG$tree_row$order #all TRUE
+hm_cluster <- as.data.frame(cutree(tree = hc, k = 3))
+table(hm_cluster)
+#hm_cluster
+#1   2   3 
+#161 952  91
+
+plot(x = hc, labels =  row.names(hc), cex = 0.5)
+rect.hclust(tree = hc, k =3, which = 1:3, border = 1:3, cluster = hm_cluster$`cutree(tree = hc, k = 3)`)
+
+#heatmap reconstruction
+rowdat_hm<-hm_cluster
+rm(hm_cluster)
+colnames(rowdat_hm)<-c('Gene_cluster')
+rowdat_hm$Gene_cluster<-factor(rowdat_hm$Gene_cluster)
+
+coldat_hm$batch<-NULL
+coldat_hm$condition<-NULL
+
+brewer.pal(3,"Set2")
+pie(rep(1,3),col =brewer.pal(3,"Set2"))
+
+my_color_annotation<-list(Gene_cluster= c("1"="#66C2A5","2"="#FC8D62","3"="#8DA0CB"),
+                          fibrosisstage=c(brewer.pal(5, "Reds")[-1]),
+                          nafldactivityscore=c(brewer.pal(9, "Purples")[-1]))
+                                    
+
+hm_allDEG<-pheatmap(vsd_hm,scale="row",border_color = NA,color = hm_color,
+         show_rownames = F,show_colnames = F,
+         cluster_rows = T,cluster_cols =F,
+         annotation_col = coldat_hm,
+         annotation_row = rowdat_hm,
+         breaks = break_hm,
+         annotation_colors = my_color_annotation,
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         angle_col = 45)
+
+tiff('./hm_allDEG.tiff',width=2000,height=2500,units='px',res=300,compression='lzw')
+hm_allDEG
+dev.off()
+
+##############Enrichment analysis############
+#obtain genes from each cluster for functional enrichment
+Clus1_green<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="1")
+Clus2_orange<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="2")
+Clus3_blue<-subset(rowdat_hm,rowdat_hm$Gene_cluster=="3")
+
+
+library(ViSEAGO)
+expressed_genes<-Fcount
+expressed_genes[expressed_genes=="0"]<-NA
+expressed_genes<-expressed_genes[complete.cases(expressed_genes),]
+expressed_genes<-rownames(expressed_genes)
+write.table(expressed_genes,'expressed_genes.txt')
+
+background<-scan("expressed_genes.txt",
+                 quiet=TRUE,
+                 what="")
+
+Ensembl<-ViSEAGO::Ensembl2GO()
+ViSEAGO::available_organisms(Ensembl)
+
+myGENE2GO<-ViSEAGO::annotate(
+  "hsapiens_gene_ensembl",
+  Ensembl)
+
+#Clus1_green
+sig_Clus1_green<-rownames(Clus1_green)
+write.table(sig_Clus1_green,'sig_Clus1_green.txt')
+
+sig_Clus1_green<-scan(
+  "sig_Clus1_green.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus1_green<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus1_green,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus1_green<-topGO::runTest(
+  BP_Clus1_green,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus1_green_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus1_green","classic_Clus1_green")))
+
+BP_Clus1_green_res<-as.data.frame(BP_Clus1_green_sResults@data)
+write.table(BP_Clus1_green_res,"BP_Clus1_green_res.txt")
+
+#Clus2_orange
+sig_Clus2_orange<-rownames(Clus2_orange)
+write.table(sig_Clus2_orange,'sig_Clus2_orange.txt')
+
+sig_Clus2_orange<-scan(
+  "sig_Clus2_orange.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus2_orange<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus2_orange,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus2_orange<-topGO::runTest(
+  BP_Clus2_orange,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus2_orange_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus2_orange","classic_Clus2_orange")))
+
+BP_Clus2_orange_res<-as.data.frame(BP_Clus2_orange_sResults@data)
+write.table(BP_Clus2_orange_res,"BP_Clus2_orange_res.txt")
+
+#Clus3_blue
+sig_Clus3_blue<-rownames(Clus3_blue)
+write.table(sig_Clus3_blue,'sig_Clus3_blue.txt')
+
+sig_Clus3_blue<-scan(
+  "sig_Clus3_blue.txt",
+  quiet=TRUE,
+  what="")
+
+BP_Clus3_blue<<-ViSEAGO::create_topGOdata(
+  geneSel=sig_Clus3_blue,
+  allGenes=background,
+  gene2GO=myGENE2GO, 
+  ont="BP",
+  nodeSize=5)
+
+classic_Clus3_blue<-topGO::runTest(
+  BP_Clus3_blue,
+  algorithm ="classic",
+  statistic = "fisher")
+
+BP_Clus3_blue_sResults<-ViSEAGO::merge_enrich_terms(
+  Input=list(
+    condition=c("BP_Clus3_blue","classic_Clus3_blue")))
+
+BP_Clus3_blue_res<-as.data.frame(BP_Clus3_blue_sResults@data)
+write.table(BP_Clus3_blue_res,"BP_Clus3_blue_res.txt")
+
+
+
+## boruta #use vsd
+library(Boruta) #https://www.analyticsvidhya.com/blog/2016/03/select-important-variables-boruta-package/
+
+vsd_df<-as.data.frame(assay(vsd))
+vsd_df<-vsd_df[DEG,]
+
+vsd_df<-as.data.frame(t(vsd_df))
+rownames(vsd_df)==rownames(dds_SAF@colData) #sanity check
+
+vsd_df$NAS<-dds_SAF@colData$nafldactivityscore
+vsd_df$fibro<-dds_SAF@colData$fibrosisstage
+
+# based on fibrosis score
+vsd_df$fibro<-2*vsd_df$fibro # give more weightage to fibrosis and to match NAS score
+vsd_df$condition<-rowSums(as.matrix(vsd_df[,c(1205:1206)]))
+
+vsd_df$fibro<-NULL
+vsd_df$NAS<-NULL
+
+#run Boruta 
+set.seed(123)
+boruta.fibrosis.vsd_df <- Boruta(condition~., data = vsd_df, doTrace = 2)
+
+print(boruta.fibrosis.vsd_df)
+#Boruta performed 99 iterations in 19.77378 secs.
+#47 attributes confirmed important: ENSG00000006327, ENSG00000008517, ENSG00000013297, ENSG00000070404, ENSG00000074276 and
+#42 more;
+#1095 attributes confirmed unimportant: ENSG00000000938, ENSG00000001626, ENSG00000002587, ENSG00000003249, ENSG00000004776
+#and 1090 more;
+#62 tentative attributes left: ENSG00000017427, ENSG00000042493, ENSG00000044524, ENSG00000050555, ENSG00000052795 and 57
+#more;
+
+boruta.fibrosis.vsd_df <- TentativeRoughFix(boruta.fibrosis.vsd_df) #decide for tentative features
+print(boruta.fibrosis.vsd_df)
+
+#Boruta performed 99 iterations in 19.77378 secs.
+#Tentatives roughfixed over the last 99 iterations.
+#89 attributes confirmed important: ENSG00000006327, ENSG00000008517, ENSG00000013297, ENSG00000017427, ENSG00000042493 and
+#84 more;
+#1115 attributes confirmed unimportant: ENSG00000000938, ENSG00000001626, ENSG00000002587, ENSG00000003249, ENSG00000004776
+#and 1110 more;
+
+boruta.df.Final<-attStats(boruta.fibrosis.vsd_df)
+selected.feature.Final<-subset(boruta.df.Final,boruta.df.Final$decision=="Confirmed")
+selected.feature.Final$symbols<-genesymbols[rownames(selected.feature.Final)]
+write.csv(selected.feature.Final,file = "selected.feature.Final.csv")
+
+
+#heatmap construction
+hm_color<- colorRampPalette(rev(brewer.pal(11, "RdBu")))(100)
+
+#heatmap: boruta 89 features
+vsd89_hm_df<-as.data.frame(assay(vsd))
+vsd89_hm_df<-vsd89_hm_df[rownames(selected.feature.Final),]
+vsd89_hm_df$gene<-genesymbols[rownames(vsd89_hm_df)]
+rownames(vsd89_hm_df)<-vsd89_hm_df$gene
+vsd89_hm_df$gene<-NULL
+
+vsd89_hm_df<-vsd89_hm_df[,rownames(coldat_hm)]
+
+hm89<-pheatmap(vsd89_hm_df,scale="row",border_color = NA,color = hm_color,
+               show_rownames = T,show_colnames = F,
+               cluster_rows = T,cluster_cols =F,
+               annotation_col = coldat_hm,
+               breaks = break_hm,
+               annotation_colors = my_color_annotation,
+               clustering_distance_rows = "correlation",
+               clustering_distance_cols = "correlation",
+               angle_col = 45,cutree_rows = 2)
+
+tiff('hm89.tiff',width=2500,height=3000,units='px',res=300,compression='lzw')
+hm89
+dev.off()
+
+selected.feature.Final<-selected.feature.Final[match(rownames(vsd89_hm_df)[hm89$tree_row$order],selected.feature.Final$symbols),]
+write.csv(selected.feature.Final,file = "selected.feature89.csv")
+
+# vsd for ssGSEA
+vsd_ssGSEA<-as.data.frame(assay(vsd))
+vsd_ssGSEA$symbols<-genesymbols[rownames(vsd_ssGSEA)]
+vsd_ssGSEA<-vsd_ssGSEA[!duplicated(vsd_ssGSEA$symbols),]
+rownames(vsd_ssGSEA)<-vsd_ssGSEA$symbols
+vsd_ssGSEA$symbols<-NULL
+
+write.table(vsd_ssGSEA,file = "vsd_ssGSEA.txt")
+write.table(as.data.frame(dds_SAF@colData[,c(1,2,9,11)]),file="coldat_ssgsea.txt")
+
