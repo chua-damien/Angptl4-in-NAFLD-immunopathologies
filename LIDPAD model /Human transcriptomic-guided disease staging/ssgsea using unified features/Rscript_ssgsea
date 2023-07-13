@@ -1,1 +1,151 @@
+library(dplyr)
+
+#merge data
+
+tmp_csv<-list.files(pattern="vsd_")
+for (i in 1:length(tmp_csv)) assign(tmp_csv[i], read.csv(tmp_csv[i],check.names = F,row.names = 1))
+
+vsdhuman_ssGSEA <- read.delim("./vsdhuman_ssGSEA.txt", row.names=1, sep="")
+
+vsdhuman_ssGSEA$gene<-rownames(vsdhuman_ssGSEA)
+vsd_LIDPAD.csv$gene<-rownames(vsd_LIDPAD.csv)
+vsd_GSE137449.csv$gene<-rownames(vsd_GSE137449.csv)
+vsd_GSE144443.csv$gene<-rownames(vsd_GSE144443.csv)
+vsd_GSE156918.csv$gene<-rownames(vsd_GSE156918.csv)
+vsd_GSE180353.csv$gene<-rownames(vsd_GSE180353.csv)
+vsd_GSE195483.csv$gene<-rownames(vsd_GSE195483.csv)
+vsd_GSE198358.csv$gene<-rownames(vsd_GSE198358.csv)
+vsd_GSE205021.csv$gene<-rownames(vsd_GSE205021.csv)
+vsd_GSE212294.csv$gene<-rownames(vsd_GSE212294.csv)
+vsd_GSE213355.csv$gene<-rownames(vsd_GSE213355.csv)
+vsd_GSE222171.csv$gene<-rownames(vsd_GSE222171.csv)
+vsd_GSE225616.csv$gene<-rownames(vsd_GSE225616.csv)
+vsd_GSE226810.csv$gene<-rownames(vsd_GSE226810.csv)
+vsd_inhouse.csv$gene<-rownames(vsd_inhouse.csv)
+
+
+vsd_all<-inner_join(vsdhuman_ssGSEA,vsd_LIDPAD.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE137449.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE144443.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE156918.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE180353.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE195483.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE198358.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE205021.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE212294.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE213355.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE222171.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE225616.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_GSE226810.csv,by="gene")
+vsd_all<-inner_join(vsd_all,vsd_inhouse.csv,by="gene")
+
+
+rownames(vsd_all)<-vsd_all$gene
+vsd_all$gene<-NULL
+vsd_all<-vsd_all[,NES_ssgsea$id]
+
+write.table(vsd_all,file="vsd_all.txt") #export file and format to gct 1.2 format
+
+############ run ssGSEA ##############
+library(ssGSEA2)
+res.merge<-run_ssGSEA2("./vsd_all.gct",
+            output.prefix = "allmerge.vsd",
+            gene.set.databases = "./NAFLDgeneset.gmt",
+            output.directory = "./",
+            sample.norm.type = "none", 
+            weight = 0.75, 
+            correl.type = "rank", 
+            statistic = "area.under.RES",
+            output.score.type = "NES", 
+            nperm = 1000, 
+            min.overlap = 5, 
+            extended.output = TRUE, 
+            global.fdr = FALSE,
+            log.file = "./run.log") # retrieve enrichment scores from ssGSEA outputs
+
+####### import ssGSEA results and plot heatmap ###########
+
+NES_ssgsea <- read.delim("./NES_ssgsea_all.txt",
+                          check.names = F)
+
+library(RColorBrewer)
+library(viridis)
+library(pheatmap)
+
+
+hm_mat<-NES_ssgsea[,c(1,3)]
+rownames(hm_mat)<-hm_mat$id
+hm_mat$id<-NULL
+
+hm_mat<-hm_mat[order(hm_mat$NAFLD_gene,decreasing =F),,drop=F]
+hm_mat<-t(hm_mat)
+
+coldat_hm<-NES_ssgsea[,c(1,4:15)]
+
+rownames(coldat_hm)<-coldat_hm$id
+coldat_hm$id<-NULL
+coldat_hm$LIDPAD<-factor(coldat_hm$LIDPAD,levels=c("control_w1","control_w4","control_w8",
+                                                   "control_w12","control_w16","control_w32","control_w48",
+                                                   "lidpad_w1","lidpad_w4","lidpad_w8",
+                                                   "lidpad_w12","lidpad_w16","lidpad_w32","lidpad_w48"))
+coldat_hm$Inhouse<-factor(coldat_hm$Inhouse,levels = c('NASH'))
+coldat_hm$stage<-factor(coldat_hm$stage,levels=c('healthy', 'NAFL', 'NASH','cirrhosis'))
+coldat_hm$MCD<-factor(coldat_hm$MCD,levels=c('Chow_w6', 'MCD_d3', 'MCD_d6','MCD_d12','MCD_w3', 'MCD_w6'))
+coldat_hm$CDAHFD<-factor(coldat_hm$CDAHFD,levels=c("Chow_w8", "CDAHFD_w8"))
+coldat_hm$HFD<-factor(coldat_hm$HFD,levels=c('Chow_w12','Control_w14','HFD_w8','HFD_w12','HFD_w14','HFD_w18','HFD_w20'))
+coldat_hm$AMLN<-factor(coldat_hm$AMLN,levels=c("Chow_w36",'AMLN_w36'))
+coldat_hm$ALIOS<-factor(coldat_hm$ALIOS,levels=c('Chow_w18','Control_w18','Alios_w18'))
+coldat_hm$GAN<-factor(coldat_hm$GAN,levels=c("GAN_w36/44"))
+coldat_hm$HFFC<-factor(coldat_hm$HFFC,levels=c("HFFC_w25"))
+
+coldat_hm <-coldat_hm[,c(1:4,6,7,8,9,5,10,11,12)]
+
+col<-c("grey50",brewer.pal(5,"Reds")[-c(1:2)])
+pie(rep(1,4),col=col)
+
+my_color_annotation<-list(fibrosisstage=c(brewer.pal(5, "Reds")[-1]),
+                          nafldactivityscore=c(brewer.pal(9, "Purples")[-1]),
+                          #stage= c("healthy"="grey50","NAFL"="#FF937C",
+                          #         "NASH"="#DE2D26","cirrhosis"="#8c0700"),
+                          Inhouse=c("NASH"="#DE2D26"),
+                          LIDPAD=c('control_w1'='#E5F5E0', 'control_w4'='#C7E9C0','control_w8'='#A1D99B',
+                                   'control_w12'='#74C476','control_w16'='#41AB5D','control_w32'='#238B45',
+                                   'control_w48'='#005A32',
+                                   'lidpad_w1'="#EFEDF5", 'lidpad_w4'="#DADAEB", 'lidpad_w8'="#BCBDDC", 'lidpad_w12'="#9E9AC8",
+                                   'lidpad_w16'="#807DBA", 'lidpad_w32'="#6A51A3", 'lidpad_w48'="#4A1486"),
+                          MCD=c('Chow_w6'='#41AB5D', 'MCD_d3'="#EFEDF5" ,'MCD_d6'="#BCBDDC",
+                                'MCD_d12'="#9E9AC8", 'MCD_w3'="#807DBA", 'MCD_w6'="#4A1486"),
+                          CDAHFD=c("Chow_w8"='#41AB5D', "CDAHFD_w8"="#4A1486"),
+                          HFD=c('Chow_w12'='#41AB5D','Control_w14'='#A1D99B', 'HFD_w8'='#EFEDF5',
+                                'HFD_w12'='#BCBDDC', 'HFD_w14'='#9E9AC8', 'HFD_w18'='#807DBA', 'HFD_w20'='#4A1486'),
+                          AMLN=c("Chow_w36"="#41AB5D",'AMLN_w36'="#4A1486"),
+                          ALIOS=c('Chow_w18'='#41AB5D', 'Control_w18'='#A1D99B', 'Alios_w18'='#4A1486'),
+                          GAN=c('GAN_w36/44'='#4A1486'))
+                          #HFFC=c("HFFC_w25"='#4A1486'))
+
+#heatmap construction
+break_hm = seq(-1.5, 1.5,length.out=100)
+hm_color<-viridis(100,option = "C")
+
+pie(1:100,col=hm_color)
+
+hm_ssgsea<-pheatmap(hm_mat,scale="row",border_color = NA,color = hm_color,
+                     show_rownames = T,show_colnames = F,
+                     cluster_rows = F,cluster_cols =F,
+                     annotation_col = coldat_hm,
+                     #annotation_row = rowdat_hm,
+                     breaks = break_hm,
+                     annotation_colors = my_color_annotation,
+                     clustering_distance_rows = "correlation",
+                     clustering_distance_cols = "correlation",
+                     angle_col = 45, cellwidth = 1.2,cellheight = 12) #suggest remvoe stage, HFFC, move lidpad w48
+
+tiff('hm_ssgsea_byscore.tiff',width=5000,height=5000,units='px',res=300,compression='lzw')
+hm_ssgsea
+dev.off()
+
+dev.new()
+pdf('hm_ssgsea_byscore.pdf',width=40,height=50)
+hm_ssgsea
+dev.off()
 
