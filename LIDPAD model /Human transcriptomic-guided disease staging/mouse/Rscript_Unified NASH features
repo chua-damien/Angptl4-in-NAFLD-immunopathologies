@@ -109,127 +109,8 @@ write.csv(sig.w48_LPvCtrl,file="sig.w48_LPvCtrl.csv")
 write.csv(res.w48_LPvCtrl,file="res.w48_LPvCtrl.csv")
 
 ######### use boruta feature for classification #############
-#convert human to mouse ensembl ID
-selected.feature89 <- read.csv("./selected.feature89.csv")
-
-Hsa.dataset<-useMart(host="https://dec2021.archive.ensembl.org", "ENSEMBL_MART_ENSEMBL", 
-                     dataset="hsapiens_gene_ensembl") 
-
-Mmu.dataset<-useMart(host="https://dec2021.archive.ensembl.org", "ENSEMBL_MART_ENSEMBL", 
-                     dataset="mmusculus_gene_ensembl") 
-
-
-Mouseborutagene<-getLDS(attributes=c("ensembl_gene_id"),
-               filters="ensembl_gene_id", values=feature149$ensembl, mart=Hsa.dataset,
-               attributesL=c("ensembl_gene_id"), martL=Mmu.dataset)
-colnames(Mouseborutagene)<-c('ensembl','mouse_ensembl')
-
-
-
-## get a unified feature list
-### shortlist the features at week 16, 32 and 48 (more obvious changes)
-
-boruta.w16<-res.w16_LPvCtrl[rownames(vsd_hm),]
-boruta.w32<-res.w32_LPvCtrl[rownames(vsd_hm),]
-boruta.w48<-res.w48_LPvCtrl[rownames(vsd_hm),]
-boruta.lateNASH<-as.data.frame(cbind(boruta.w16$log2FoldChange,
-                                     boruta.w32$log2FoldChange,
-                                     boruta.w48$log2FoldChange,
-                                     boruta.w16$symbol))
-boruta.lateNASH$ensembl<-rownames(boruta.w16)
-colnames(boruta.lateNASH)<-c('w16L2FC','w32L2FC','w48L2FC',"symbols","ensembl")
-boruta.lateNASH$marker<-rowdat_hm[boruta.lateNASH$ensembl,,drop=F]$marker
-
-write.csv(boruta.lateNASH,file = "./borutaFeature/boruta.lateNASH.csv")
-
-
-boruta.lateNASH <- read.csv("./boruta.lateNASH.csv") #load filtered boruta features
-
-unified_rowdat_hm<-subset(boruta.lateNASH,boruta.lateNASH$selected.=="Selected")
-rownames(unified_rowdat_hm)<-unified_rowdat_hm$ensembl
-unified_rowdat_hm<-unified_rowdat_hm[,7,drop=F]
-unified_rowdat_hm$marker<-factor(unified_rowdat_hm$marker,levels=c('non-diseased','NASH', 'NASH_cirrhotic', 'cirrhotic'))
-
-unified_vsd_hm<-vsd_hm[rownames(unified_rowdat_hm),]
-
-hm_boruta.unified<-pheatmap(unified_vsd_hm,scale="row",border_color = NA,color = hm_color,
-                    show_rownames = F,show_colnames = T,
-                    cluster_rows = F,cluster_cols = F,
-                    annotation_col = coldat_hm,
-                    annotation_row = rowdat_hm,
-                    breaks = break_hm,
-                    annotation_colors = my_color_annotation,
-                    clustering_distance_rows = "correlation",
-                    clustering_distance_cols = "correlation",
-                    angle_col = 45,gaps_col = 48)
-
-tiff('hm_boruta.unified.tiff',width=4000,height=3000,units='px',res=300,compression='lzw')
-hm_boruta.unified
-dev.off()
-
-feature108_unified<-subset(feature149,feature149$mouse_ensembl %in% rownames(unified_rowdat_hm))
-write.csv(feature108_unified,file="./borutaFeature/feature108_unified.csv")
-
-#convert mouse ensembl to human gene symbols
-#convert human to mouse ensembl ID
-mouse2human<-getLDS(attributes=c("ensembl_gene_id"),
-                        filters="ensembl_gene_id", values=rownames(vsd_df), mart=Mmu.dataset,
-                        attributesL=c("ensembl_gene_id","external_gene_name"), martL=Hsa.dataset)
-colnames(mouse2human)<-c('mouse.ensembl','human.ensembl','human.genesymbol')
-
-#manually curate some inconsistencies
-## retain ENSMUSG00000061758 (AKR1B10) and remove other IDs of the same genes 
-test<-subset(mouse2human,mouse2human$mouse.ensembl %in% feature108_unified$mouse_ensembl)
-
-discard<-c('ENSMUSG00000052131','ENSMUSG00000029762')
-mouse2human<-subset(mouse2human,!mouse2human$mouse.ensembl%in%discard)
-
-#remove unannotated ENSMUSG00000003585/ENSG00000249590, ENSMUSG00000007891/ENSG00000250644,
-# ENSMUSG00000003269/ENSG00000268465,ENSMUSG00000024042/ENSG00000275993, ENSMUSG00000026739/ENSG00000168283
-mouse2human<-subset(mouse2human,!mouse2human$human.ensembl %in% c("ENSG00000249590",'ENSG00000250644', "ENSG00000268465",'ENSG00000275993','ENSG00000168283'))
-
-
-#add ENSMUSG00000023905
-include<-subset(feature108_unified,feature108_unified$mouse_ensembl %in% "ENSMUSG00000023905")
-include<-include[,c(4,2,1)]
-colnames(include)<-colnames(mouse2human)
-
-mouse2human<-rbind(mouse2human,include)
-
-mouse2human<-subset(mouse2human,!duplicated(mouse2human$mouse.ensembl))
-
-rownames(mouse2human)<-mouse2human$mouse.ensembl
-mouse2human$mouse.ensembl<-NULL
-
-
-
-#replace symbols of ENSMUSG00000015947 from "FCGR1B" to "FCGR1A"
-
-include2<-subset(feature89,feature89$mouse_ensembl %in% "ENSMUSG00000015947")
-rownames(include2)<-include2$mouse_ensembl
-include2<-include2[,c(1,2)]
-colnames(include2)<-colnames(mouse2human)
-
-
-mouse2human["ENSMUSG00000015947",]$human.ensembl<-include2$human.ensembl
-mouse2human["ENSMUSG00000015947",]$human.genesymbol<-include2$human.genesymbol
-
-
-vsd_df<-as.data.frame(assay(vsd))
-vsd_df$symbol<-mouse2human[rownames(vsd_df),]$human.genesymbol
-vsd_df<-vsd_df[!duplicated(vsd_df$symbol),]
-vsd_df<-vsd_df[complete.cases(vsd_df),]
-rownames(vsd_df)<-vsd_df$symbol
-vsd_df$symbol<-NULL
-
-test2<-subset(vsd_df,rownames(vsd_df)%in%feature89$symbols)
-
-write.csv(vsd_df,file="./borutaFeature/vsd_LIDPAD.csv")
-write.csv(mouse2human,file="./borutaFeature/mouse2human.csv")
-
-##############################################################################
 #feature 89
-feature89 <- read.csv("C:/Users/LKC/OneDrive - Nanyang Technological University/Project/SingleCell_NASH/Meta-analysis/LIDPAD liver transcriptome/borutaFeature/selected.feature89.csv")
+feature89 <- read.csv("./selected.feature89.csv")
 
 Mouseborutagene<-getLDS(attributes=c("ensembl_gene_id"),
                         filters="ensembl_gene_id", values=feature89$ensembl, mart=Hsa.dataset,
@@ -306,7 +187,7 @@ boruta.lateNASH$ensembl<-rownames(boruta.w16)
 colnames(boruta.lateNASH)<-c('w16L2FC','w32L2FC','w48L2FC',"symbols","ensembl")
 boruta.lateNASH$marker<-rowdat_hm[boruta.lateNASH$ensembl,,drop=F]$marker
 
-write.csv(boruta.lateNASH,file = "./borutaFeature/boruta.lateNASH.csv")
+write.csv(boruta.lateNASH,file = "./borutaFeature/boruta.lateNASH.csv") #export file and do curation based on the expression profile using excel
 
 
 boruta.lateNASH <- read.csv("./borutaFeature/boruta.lateNASH2.csv") #load filtered boruta features
@@ -314,7 +195,6 @@ boruta.lateNASH <- read.csv("./borutaFeature/boruta.lateNASH2.csv") #load filter
 unified_rowdat_hm<-subset(boruta.lateNASH,boruta.lateNASH$selected.=="Selected")
 rownames(unified_rowdat_hm)<-unified_rowdat_hm$ensembl
 unified_rowdat_hm<-unified_rowdat_hm[,7,drop=F]
-unified_rowdat_hm$marker<-factor(unified_rowdat_hm$marker,levels=c('non-diseased','NASH', 'NASH_cirrhotic', 'cirrhotic'))
 
 unified_vsd_hm<-vsd_hm[rownames(unified_rowdat_hm),]
 
