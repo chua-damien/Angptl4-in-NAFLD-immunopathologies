@@ -3,8 +3,8 @@
 The project contains the R scripts of the bulk and single-cell transcriptomes of our diet-induced non-alcoholic fatty liver disease (NAFLD) mouse model. We formulated a specialized diet (Liver Disease Progression Aggravation Diet; LIDPAD) that can accelerate NAFLD progression in C57BL/6J mice when they are housed at thermoneutral condition (~ 30 degree Celcius). Manuscript 1 is under review by Advanced Science.
 
 ## Manuscript
-Manuscript 1: The LIDPAD mouse model captures the multisystem interactions, rapid disease progression and extrahepatic complications in MASLD.
-Link: Pending
+Manuscript 1: Low, Zun Siong, et al. "The LIDPAD mouse model captures the multisystem interactions and extrahepatic complications in MASLD." Advanced Science 11.35 (2024): 2404326.
+Link: https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/advs.202404326
 
 Manuscript 2: Angiopoietin-like 4 shapes the intrahepatic T-cell landscape via eIF2α signaling during steatohepatitis in diet-induced NAFLD.
 Link: Pending
